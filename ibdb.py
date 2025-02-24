@@ -12,14 +12,26 @@ def etl(html):
 
     # Parse the HTML content with BeautifulSoup
     bs4 = BeautifulSoup(html, 'html.parser')
-
-    # Find the script tag that contains the 'grossdata' variable
-    script_tag = bs4.find('script', string=re.compile(r'var grossdata ='))
+    
+    # Debug the HTML content
+    logging.debug("HTML Content length: %d", len(html))
+    
+    # Find all script tags first
+    script_tags = bs4.find_all('script')
+    logging.debug("Found %d script tags", len(script_tags))
+    
+    # Look for grossdata in all script tags
+    script_tag = None
+    for tag in script_tags:
+        if tag.string and 'grossdata' in tag.string:
+            script_tag = tag
+            break
 
     # Check if the script tag was found
     if script_tag:
+        logging.debug("Found script tag with grossdata")
         # Use a regular expression to extract the JSON-like string assigned to 'grossdata'
-        match = re.search(r'var grossdata = ({.*?});', script_tag.string, re.DOTALL)
+        match = re.search(r'var\s+grossdata\s*=\s*({.*?});', script_tag.string, re.DOTALL)
 
         if match:
             # Extract the JSON-like string
@@ -39,25 +51,31 @@ def etl(html):
                 data = json.loads(json_str)
             except json.JSONDecodeError as e:
                 logging.error(f"Error decoding JSON: {e}")
+                logging.debug(f"Problematic JSON string: {json_str}")
         else:
             logging.error("No match found for 'grossdata' in the script content.")
+            logging.debug("Script content: %s", script_tag.string[:200] + "...")  # First 200 chars
     else:
         logging.error("Script tag containing 'grossdata' not found in HTML.")
+        # Log first 500 characters of HTML for debugging
+        logging.debug("HTML preview: %s", html[:500] + "...")
 
     logging.info("Extracted data:")
     strucrued_data = []
     for key in data.keys():
         logging.debug(f"{key}: {len(data[key])}")
         for row in data[key]:
-            logging.debug(row)
-            strucrued_data.append({
-                "Week Ending": row[0],
-                "Gross": row[6],
-                "Attendance": row[7],
-                "% Capacity": row[8],
-                "# Previews": row[9],
-                "# Perf.": row[10],
-            })
+            try:
+                strucrued_data.append({
+                    "Week Ending": row[0],
+                    "Gross": row[6],
+                    "Attendance": row[7],
+                    "% Capacity": row[8],
+                    "# Previews": row[9],
+                    "# Perf.": row[10],
+                })
+            except IndexError as e:
+                logging.error(f"Error processing row {row}: {e}")
 
     # Return the extracted data
     logging.debug(strucrued_data)
